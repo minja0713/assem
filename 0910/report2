@@ -1,0 +1,205 @@
+**1.** In 32-bit mode, aside from the stack pointer (ESP), what other register points to variables on the stack?
+
+스택 위의 변수나 함수 매개변수를 참조할 때 ESP 외에 **EBP(Extended Base Pointer)**를 사용할 수 있다. EBP는 일반적으로 현재 함수의 스택 프레임을 기준으로 지역변수와 매개변수를 참조하는 데 사용된다.
+
+→ **EBP**
+
+---
+
+**2.** Name at least four CPU status flags.
+
+CPU의 대표적인 상태 플래그에는 Carry Flag(CF), Zero Flag(ZF), Sign Flag(SF), Overflow Flag(OF), Auxiliary Carry Flag(AF), Parity Flag(PF) 등이 있다.
+
+→ **Carry, Zero, Sign, Overflow** (4개 예시)
+
+---
+
+**3.** Which flag is set when the result of an unsigned arithmetic operation is too large to fit into the destination?
+
+부호 없는(unsigned) 연산의 결과가 대상 피연산자의 크기를 초과하면 **Carry Flag(CF)**가 설정된다.
+
+→ **Carry Flag (CF)**
+
+---
+
+**4.** Which flag is set when the result of a signed arithmetic operation is either too large or too small to fit into the destination?
+
+부호 있는(signed) 연산의 결과가 표현할 수 있는 범위를 초과하거나 미달하면 **Overflow Flag(OF)**가 설정된다.
+
+→ **Overflow Flag (OF)**
+
+---
+
+**5.** (True/False): When a register operand size is 32 bits and the REX prefix is used, the R8D register is available for programs to use.
+
+REX prefix는 **64비트 모드에서** R8~R15와 같은 확장 레지스터를 사용할 수 있게 한다. 따라서 32비트 피연산자 크기를 사용하더라도 R8D를 사용할 수 있다.
+
+→ **True**
+
+---
+
+**6.** Which flag is set when an arithmetic or logical operation generates a negative result?
+
+산술 또는 논리 연산의 결과가 음수이면 **Sign Flag(SF)**가 설정된다. 정확히는 결과의 최상위 비트(MSB)가 1이면 SF가 설정된다.
+
+→ **Sign Flag (SF)**
+
+---
+
+**7.** Which part of the CPU performs floating-point arithmetic?
+
+부동소수점 연산은 **FPU(Floating-Point Unit)**에서 수행된다.
+
+→ **FPU (Floating-Point Unit)**
+
+---
+
+**8.** On a 32-bit processor, how many bits are contained in each floating-point data register?
+
+32비트 프로세서의 x87 FPU 데이터 레지스터인 ST(0)~ST(7)은 각각 **80비트**이다.
+
+→ **80 bits**
+
+---
+
+**9.** (True/False): The x86-64 instruction set is backward-compatible with the x86 instruction set.
+
+x86-64는 기존 x86 명령어 집합과의 하위 호환성을 지원한다.
+
+→ **True**
+
+---
+
+**10.** (True/False): In current 64-bit chip implementations, all 64 bits are used for addressing.
+
+현재의 x86-64 프로세서에서는 64비트 전체를 실제 주소 비트로 사용하는 것이 아니다. 일반적인 구현에서는 64비트 주소 공간의 일부 비트만 실제 주소 지정에 사용된다.
+
+→ **False**
+
+---
+
+**11.** (True/False): The Itanium instruction set is completely different from the x86 instruction set.
+
+Itanium의 IA-64 명령어 집합은 x86 및 x86-64와 다른 별도의 명령어 집합이다.
+
+→ **True**
+
+---
+
+**12.** (True/False): Static RAM is usually less expensive than dynamic RAM.
+
+SRAM(Static RAM)은 일반적으로 DRAM보다 빠르지만 제조 비용이 더 비싸다. DRAM은 상대적으로 저렴하며 주기적인 refresh가 필요하다.
+
+→ **False**
+
+---
+
+**13.** (True/False): The 64-bit RDI register is available when the REX prefix is used.
+
+64비트 모드에서 REX prefix를 사용하면 RDI와 같은 64비트 범용 레지스터를 사용할 수 있다.
+
+→ **True**
+
+---
+
+**14.** (True/False): In native 64-bit mode, you can use 16-bit real mode, but not the virtual-8086 mode.
+
+Native 64-bit mode에서는 **real mode로 전환하거나 virtual-8086 mode를 사용할 수 없다.** 따라서 "16-bit real mode를 사용할 수 있다"는 문장이 틀렸다.
+
+→ **False**
+
+---
+
+**15.** (True/False): The x86-64 processors have 4 more general-purpose registers than the x86 processors.
+
+기본적인 x86은 8개의 범용 레지스터를 사용하며, x86-64에서는 R8~R15가 추가되어 총 **16개의 범용 레지스터**를 사용할 수 있다. 따라서 4개가 아니라 **8개가 더 많다.**
+
+→ **False**
+
+---
+
+**16.** (True/False): The 64-bit version of Microsoft Windows does not support virtual-8086 mode.
+
+64비트 Windows에서는 virtual-8086 mode를 지원하지 않는다.
+
+→ **True**
+
+---
+
+**17.** (True/False): DRAM can only be erased using ultraviolet light.
+
+자외선을 이용하여 데이터를 지우는 메모리는 EPROM이다. DRAM은 자외선으로 지우는 것이 아니라 전기적으로 데이터를 저장하며, 데이터를 유지하기 위해 주기적인 refresh가 필요하다.
+
+→ **False**
+
+---
+
+**18.** (True/False): In 64-bit mode, you can use up to eight floating-point registers.
+
+x87 FPU의 부동소수점 데이터 레지스터는 ST(0)~ST(7)까지 **8개**이다. 64비트 모드에서도 이 8개의 x87 레지스터를 사용할 수 있다.
+
+→ **True**
+
+---
+
+**19.** (True/False): A bus is a plastic cable that is attached to the motherboard at both ends, but does not sit directly on the motherboard.
+
+버스(bus)는 CPU와 메모리, 주변장치 사이에서 데이터와 제어 신호 등을 전달하는 통신 경로이다. 일반적으로 메인보드의 전기적 연결이나 회로로 구성되며, 단순한 플라스틱 케이블을 의미하지 않는다.
+
+→ **False**
+
+---
+
+**20.** (True/False): CMOS RAM is the same as static RAM, meaning that it holds its value without any extra power or refresh cycles.
+
+CMOS RAM은 전원이 완전히 차단되면 데이터를 유지할 수 없으며, 일반적으로 배터리 전원을 이용해 데이터를 유지한다. 또한 SRAM과 CMOS RAM을 같은 의미로 볼 수 없다.
+
+→ **False**
+
+---
+
+**21.** (True/False): PCI connectors are used for graphics cards and sound cards.
+
+PCI 슬롯은 그래픽 카드나 사운드 카드와 같은 확장 카드를 연결하는 데 사용되었다. 다만 현대의 그래픽 카드는 주로 PCI Express(PCIe)를 사용한다.
+
+→ **True**
+
+---
+
+**22.** (True/False): The 8259A is a controller that handles external interrupts from hardware devices.
+
+8259A는 키보드나 타이머와 같은 하드웨어 장치에서 발생하는 **외부 하드웨어 인터럽트**를 관리하는 Programmable Interrupt Controller(PIC)이다.
+
+→ **True**
+
+---
+
+**23.** (True/False): The acronym PCI stands for programmable component interface.
+
+PCI는 **Peripheral Component Interconnect**의 약자이다.
+
+→ **False**
+
+---
+
+**24.** (True/False): VRAM stands for virtual random access memory.
+
+VRAM은 **Video Random Access Memory**의 약자이다. 그래픽 데이터를 저장하기 위해 사용되는 메모리를 의미한다.
+
+→ **False**
+
+---
+
+**25.** At which level(s) can an assembly language program manipulate input/output?
+
+어셈블리 언어 프로그램은 I/O 명령어를 이용하여 하드웨어에 직접 접근할 수 있으며, 운영체제나 BIOS에서 제공하는 서비스를 호출하는 방식으로도 I/O를 처리할 수 있다. 교재에서 구분하는 I/O 접근 계층에 따르면 **Level 0~Level 3**에서 I/O를 다룰 수 있다.
+
+→ **Level 0 ~ Level 3**
+
+---
+
+**26.** Why do game programs often send their sound output directly to the sound card's hardware ports?
+
+게임 프로그램은 실시간으로 많은 데이터를 처리해야 하므로 성능이 중요하다. 운영체제나 BIOS 등의 중간 계층을 거치지 않고 하드웨어를 직접 제어하면 불필요한 오버헤드를 줄이고 더 빠르게 I/O를 처리할 수 있다. 따라서 성능이 중요한 게임 프로그램에서는 사운드 카드의 하드웨어를 직접 제어하는 방식을 사용할 수 있다.
+
+→ **성능을 높이고 I/O 처리의 오버헤드를 줄이기 위해 하드웨어를 직접 제어하기 때문이다.**
