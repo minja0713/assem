@@ -1,0 +1,293 @@
+
+## 1. `three`라는 더블워드 변수의 상위 워드와 하위 워드를 서로 바꾸는 `MOV` 명령어들을 작성하라.
+
+`AX`와 `BX`를 임시 저장 공간으로 사용한다.
+
+```asm
+mov ax, WORD PTR three       ; 하위 워드 임시 저장
+mov bx, WORD PTR three+2     ; 상위 워드 임시 저장
+mov WORD PTR three, bx       ; 상위 워드를 하위 위치로
+mov WORD PTR three+2, ax     ; 하위 워드를 상위 위치로
+```
+
+더블워드의 두 워드는 각각 `three`와 `three+2` 위치에 있다.
+
+---
+
+## 2. `XCHG` 명령을 최대 세 번 사용하여 8비트 레지스터 A, B, C, D의 값을 A, B, C, D 순서에서 B, C, D, A 순서로 바꾸라.
+
+```asm
+xchg A, B
+xchg A, C
+xchg A, D
+```
+
+실행 후 레지스터 값의 순서는 `B, C, D, A`가 된다. 여기서 A, B, C, D는 문제에서 지정한 8비트 레지스터를 나타내는 이름이다.
+
+---
+
+## 3. 전송 메시지의 패리티 비트는 데이터 바이트와 결합되어 1의 개수를 짝수로 만들곤 한다. AL에 `01110101`이 들어 있을 때, 산술 명령과 패리티 플래그를 이용해 짝수 패리티인지 홀수 패리티인지 판별하는 방법을 보이라.
+
+```asm
+add al, 0       ; 값은 유지하고 플래그를 갱신
+jp  evenParity  ; PF=1이면 하위 바이트의 1 개수가 짝수
+jnp oddParity   ; PF=0이면 하위 바이트의 1 개수가 홀수
+```
+
+`01110101b`에는 1이 다섯 개 있으므로 홀수 패리티다. 따라서 이 예에서는 `PF=0`이고 `oddParity`로 분기한다.
+
+> 패리티 플래그(PF)는 연산 결과의 최하위 바이트에서 1인 비트의 개수가 짝수이면 1이 된다. `ADD AL,0`은 AL의 값을 바꾸지 않으면서 산술 플래그를 갱신한다.
+
+---
+
+## 4. 바이트 피연산자를 사용해 음수 두 개를 더하고 Overflow Flag를 설정하는 코드를 작성하라.
+
+```asm
+mov al, -100
+add al, -60
+```
+
+수학적 결과는 $-160$으로 부호 있는 8비트 범위인 $-128$~$127$를 벗어난다. 따라서 `OF=1`이 된다. 8비트 결과의 비트 패턴은 `60h`이다.
+
+---
+
+## 5. 덧셈을 이용해 Zero Flag와 Carry Flag를 동시에 설정하는 두 명령어를 작성하라.
+
+```asm
+mov al, 0FFh
+add al, 1
+```
+
+8비트 덧셈 결과는 `00h`이며 자리올림이 발생한다.
+
+- `ZF = 1`: 결과가 0
+- `CF = 1`: 8비트 범위를 넘어가는 자리올림 발생
+
+---
+
+## 6. 뺄셈을 사용해 Carry Flag를 설정하는 두 명령어를 작성하라.
+
+```asm
+mov al, 0
+sub al, 1
+```
+
+부호 없는 뺄셈에서 빌림이 발생하므로 `CF=1`이 된다. 결과 바이트는 `FFh`이다.
+
+---
+
+## 7. 다음 산술식을 어셈블리 언어로 구현하라. `val1`, `val2`, `val3`는 32비트 정수 변수라고 가정한다.
+
+$$EAX = -val2 + 7 - val3 + val1$$
+
+```asm
+mov eax, val2
+neg eax
+add eax, 7
+sub eax, val3
+add eax, val1
+```
+
+---
+
+## 8. 인덱스 주소 지정과 스케일 팩터를 사용해 더블워드 배열을 순회하며 원소의 합을 계산하는 루프를 작성하라.
+
+```asm
+.data
+array DWORD 10, 20, 30, 40, 50
+
+.code
+    mov esi, 0
+    mov ecx, LENGTHOF array
+    xor eax, eax
+
+sumLoop:
+    add eax, array[esi*4]    ; DWORD 원소이므로 인덱스에 4를 곱함
+    inc esi
+    loop sumLoop
+```
+
+반복이 끝나면 `EAX`에 배열 원소의 합이 들어 있다. `ESI`는 원소 인덱스, `ECX`는 반복 횟수다.
+
+> `array[esi*4]`의 스케일 팩터 `4`는 DWORD 하나의 크기(바이트 수)다. MASM에서 `array[esi*TYPE array]`와 같이 자료형 크기를 표현할 수도 있다.
+
+---
+
+## 9. 다음 식을 어셈블리 언어로 구현하라. `val2`와 `val4`는 16비트 정수 변수라고 가정한다.
+
+$$AX = (val2 + BX) - val4$$
+
+```asm
+mov ax, val2
+add ax, bx
+sub ax, val4
+```
+
+---
+
+## 10. Carry Flag와 Overflow Flag를 동시에 설정하는 두 명령어를 작성하라.
+
+```asm
+mov al, 80h
+add al, 80h
+```
+
+8비트 결과는 `00h`이고 자리올림이 발생하므로 `CF=1`이다. 부호 있는 관점에서는 $-128 + (-128)$이 표현 범위를 벗어나므로 `OF=1`이다.
+
+---
+
+## 11. `INC`와 `DEC` 실행 후 Zero Flag를 이용해 부호 없는 오버플로/언더플로를 나타내는 명령어 시퀀스를 작성하라.
+
+`INC`의 결과가 0이면, 직전 값이 최댓값이어서 증가 과정에서 순환했을 수 있다.
+
+```asm
+inc al
+jz  incWrapped       ; FFh에서 증가해 00h가 되면 ZF=1
+```
+
+`DEC`의 경우 언더플로는 `00h`에서 감소해 `FFh`가 되는 상황이다. 이때 `DEC` 직후 ZF는 0이므로, ZF만으로는 바로 판별되지 않는다. 감소 결과가 `FFh`인지 비교하면 ZF를 이용해 확인할 수 있다.
+
+```asm
+dec al
+cmp al, 0FFh
+je  decWrapped       ; 00h에서 감소해 FFh가 되면 CMP가 ZF=1로 설정
+```
+
+> `DEC`는 CF를 변경하지 않는다. 따라서 `DEC`의 부호 없는 언더플로를 감지할 때는 감소 전 값이 0인지 검사하거나, 위처럼 결과를 확인해야 한다.
+
+---
+
+## 12–18번에서 사용할 데이터 선언
+
+```asm
+.data
+myBytes  BYTE 10h, 20h, 30h, 40h
+myWords  WORD 3 DUP(?), 2000h
+myString BYTE "ABCDE"
+```
+
+`myWords` 선언은 초기화되지 않은 WORD 세 개와 `2000h` WORD 한 개, 총 네 원소를 만든다.
+
+---
+
+## 12. `myBytes`가 짝수 주소에서 시작하도록 하는 지시문을 데이터에 삽입하라.
+
+`myBytes` 선언 바로 앞에 `ALIGN 2`를 둔다.
+
+```asm
+.data
+ALIGN 2
+myBytes BYTE 10h, 20h, 30h, 40h
+```
+
+`ALIGN 2`는 다음 데이터가 2바이트 경계, 즉 짝수 주소에 놓이도록 정렬한다.
+
+---
+
+## 13. 각 명령 실행 후 EAX의 값은 얼마인가?
+
+```asm
+mov eax, TYPE myBytes       ; a.
+mov eax, LENGTHOF myBytes   ; b.
+mov eax, SIZEOF myBytes     ; c.
+mov eax, TYPE myWords       ; d.
+mov eax, LENGTHOF myWords   ; e.
+mov eax, SIZEOF myWords     ; f.
+mov eax, SIZEOF myString    ; g.
+```
+
+| 항목 | 의미 | EAX 값 |
+|---|---|---:|
+| a | `myBytes` 원소 하나의 크기 | `1` |
+| b | `myBytes`의 원소 개수 | `4` |
+| c | `myBytes` 전체 크기(바이트) | `4` |
+| d | `myWords` 원소 하나의 크기 | `2` |
+| e | `myWords`의 원소 개수 | `4` |
+| f | `myWords` 전체 크기(바이트) | `8` |
+| g | `myString`의 전체 크기(바이트) | `5` |
+
+---
+
+## 14. `myBytes`의 첫 두 바이트를 DX 레지스터로 옮기는 단일 명령어를 작성하라. 결과는 `2010h`가 되어야 한다.
+
+```asm
+mov dx, WORD PTR myBytes
+```
+
+x86은 리틀 엔디언이므로 메모리의 첫 두 바이트 `10h 20h`는 WORD 값 `2010h`로 읽힌다.
+
+---
+
+## 15. `myWords`의 두 번째 바이트를 AL 레지스터로 옮기는 명령어를 작성하라.
+
+```asm
+mov al, BYTE PTR [myWords+1]
+```
+
+이것은 배열 시작 위치에서 1바이트 떨어진 곳, 즉 두 번째 바이트를 읽는다. `myWords`의 처음 세 WORD는 초기화되지 않았으므로, 이 바이트의 값은 실행 시점에 정해져 있지 않다.
+
+---
+
+## 16. `myBytes`의 네 바이트 전체를 EAX 레지스터로 옮기는 명령어를 작성하라.
+
+```asm
+mov eax, DWORD PTR myBytes
+```
+
+네 바이트 `10h, 20h, 30h, 40h`가 리틀 엔디언으로 읽히므로 EAX 값은 `40302010h`가 된다.
+
+---
+
+## 17. `myWords`를 32비트 레지스터로 직접 옮길 수 있도록 `LABEL` 지시문을 추가하라.
+
+`myWords`와 같은 메모리 위치에 DWORD 형식의 별칭(label)을 선언한다.
+
+```asm
+myWords32 LABEL DWORD
+myWords   WORD 3 DUP(?), 2000h
+```
+
+이후 다음과 같이 사용할 수 있다.
+
+```asm
+mov eax, myWords32
+```
+
+`LABEL`은 별칭을 만들 뿐, 메모리 공간을 새로 할당하지 않는다.
+
+---
+
+## 18. `myBytes`를 16비트 레지스터로 직접 옮길 수 있도록 `LABEL` 지시문을 추가하라.
+
+`myBytes`와 같은 메모리 위치에 WORD 형식의 별칭을 선언한다.
+
+```asm
+myBytes16 LABEL WORD
+myBytes   BYTE 10h, 20h, 30h, 40h
+```
+
+이후 다음과 같이 사용할 수 있다.
+
+```asm
+mov ax, myBytes16       ; AX = 2010h
+```
+
+`LABEL`은 기존 메모리 위치에 다른 크기의 형식 이름을 부여하는 지시문이다. 데이터가 중복으로 생성되지는 않는다.
+
+---
+
+## 핵심 정리
+
+| 항목 | 요점 |
+|---|---|
+| `XCHG`로 회전 | 3회 교환으로 A, B, C, D를 B, C, D, A로 변경 가능 |
+| PF | 결과 바이트의 1 비트 수가 짝수이면 1 |
+| ZF와 CF 동시 설정 | 예: `FFh + 1 = 00h` |
+| CF와 OF 동시 설정 | 예: signed/unsigned 양쪽에서 넘치는 `80h + 80h` |
+| 배열 스케일 팩터 | DWORD 인덱스 주소 지정은 인덱스에 4를 곱함 |
+| `TYPE` | 원소 하나의 크기(바이트) |
+| `LENGTHOF` | 원소 개수 |
+| `SIZEOF` | 전체 크기(바이트) |
+| `ALIGN 2` | 다음 데이터를 2바이트 경계에 배치 |
+| `LABEL` | 같은 주소에 다른 데이터 형식의 별칭을 선언 |
+| 리틀 엔디언 | 낮은 주소의 바이트가 값의 최하위 바이트 |
