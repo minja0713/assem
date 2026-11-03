@@ -1,0 +1,591 @@
+## 1. ASCII 십진수 표시 — `WriteScaled`
+
+### 문제 번역
+
+소수점 위치가 생략된 ASCII 숫자를 출력하는 `WriteScaled` 프로시저를 작성하라. `DECIMAL_OFFSET`은 오른쪽에서부터 소수점을 삽입할 자릿수다.
+
+예를 들어 `DECIMAL_OFFSET = 5`이고 문자열이 `"100123456789765"`이면 다음처럼 출력한다.
+
+```text
+1001234567.89765
+```
+
+호출할 때 EDX에는 숫자 문자열의 주소, ECX에는 문자열 길이, EBX에는 소수점 오프셋을 전달한다. 길이가 서로 다른 세 숫자를 전달하는 테스트 프로그램도 작성하라.
+
+### 풀이
+
+프로시저는 숫자를 왼쪽부터 출력한다. 출력한 뒤 남은 글자 수가 EBX와 같아지는 지점에서 소수점을 출력한다. 아래 코드는 `0 < decimalOffset < length`인 입력을 가정한다.
+
+```asm
+WriteScaled PROC USES esi edi ebp
+    mov esi, edx            ; 문자열 포인터
+    mov edi, ecx            ; 남은 글자 수
+    mov ebp, ebx            ; 소수점 오른쪽 자릿수
+
+writeLoop:
+    mov al, BYTE PTR [esi]
+    call WriteChar
+    inc esi
+    dec edi
+
+    cmp edi, ebp
+    jne noDecimal
+    mov al, '.'
+    call WriteChar
+
+noDecimal:
+    test edi, edi
+    jnz writeLoop
+    ret
+WriteScaled ENDP
+```
+
+테스트 예시:
+
+```asm
+.data
+number1 BYTE "100123456789765"
+number2 BYTE "1234567"
+number3 BYTE "98765"
+
+.code
+    mov edx, OFFSET number1
+    mov ecx, LENGTHOF number1
+    mov ebx, 5
+    call WriteScaled         ; 1001234567.89765
+    call CrLf
+
+    mov edx, OFFSET number2
+    mov ecx, LENGTHOF number2
+    mov ebx, 2
+    call WriteScaled         ; 12345.67
+    call CrLf
+
+    mov edx, OFFSET number3
+    mov ecx, LENGTHOF number3
+    mov ebx, 1
+    call WriteScaled         ; 9876.5
+    call CrLf
+```
+
+---
+
+## 2. 확장 뺄셈 프로시저 — `Extended_Sub`
+
+### 문제 번역
+
+크기가 임의인 두 이진 정수를 빼는 `Extended_Sub` 프로시저를 작성하라. 두 피연산자의 저장 크기는 같아야 하며, 비트 수는 32의 배수여야 한다. 각각 최소 10바이트인 여러 정수 쌍을 전달하는 테스트 프로그램을 작성하라.
+
+### 풀이
+
+ESI는 피감수, EDI는 감수, EDX는 결과 버퍼, ECX는 DWORD 개수를 가리키도록 인터페이스를 정한다. 크기는 32비트의 배수이므로 최소 12바이트, 즉 3 DWORD로 테스트한다.
+
+```asm
+; 입력:
+;   ESI = 피감수 주소
+;   EDI = 감수 주소
+;   EDX = 결과 주소
+;   ECX = DWORD 개수
+; 처리 순서: 최하위 DWORD부터 상위 DWORD 방향
+
+Extended_Sub PROC
+    clc
+
+subLoop:
+    mov eax, DWORD PTR [esi]
+    sbb eax, DWORD PTR [edi]
+    mov DWORD PTR [edx], eax
+
+    lea esi, [esi+4]        ; LEA는 플래그를 변경하지 않음
+    lea edi, [edi+4]
+    lea edx, [edx+4]
+    loop subLoop
+    ret
+Extended_Sub ENDP
+```
+
+포인터를 이동할 때 `ADD` 대신 `LEA`를 사용한다. `ADD`는 CF를 바꾸어 다음 `SBB`에 전달해야 할 borrow를 망가뜨릴 수 있다. `LOOP`도 플래그를 변경하지 않는다.
+
+테스트 데이터 예시(각 정수 12바이트):
+
+```asm
+.data
+; little-endian DWORD 순서
+a1 DWORD 0, 0, 1
+b1 DWORD 1, 0, 0
+r1 DWORD 3 DUP(?)
+
+a2 DWORD 100h, 0, 0
+b2 DWORD 1,   0, 0
+r2 DWORD 3 DUP(?)
+```
+
+호출 예시:
+
+```asm
+    mov esi, OFFSET a1
+    mov edi, OFFSET b1
+    mov edx, OFFSET r1
+    mov ecx, 3
+    call Extended_Sub       ; r1 = [FFFFFFFFh, FFFFFFFFh, 00000000h]
+
+    mov esi, OFFSET a2
+    mov edi, OFFSET b2
+    mov edx, OFFSET r2
+    mov ecx, 3
+    call Extended_Sub       ; r2 = [000000FFh, 0, 0]
+```
+
+---
+
+## 3. 패킹 십진수 변환 — `PackedToAsc`
+
+### 문제 번역
+
+4바이트 패킹 십진 정수를 ASCII 십진 숫자 문자열로 변환하는 `PackedToAsc` 프로시저를 작성하라. 패킹 정수와 ASCII 숫자를 저장할 버퍼 주소를 전달한다. 최소 5개의 패킹 십진 정수로 테스트하라.
+
+### 풀이
+
+아래 예제는 4바이트에 8개의 유효한 BCD 숫자가 저장되어 있다고 가정한다. EAX에 패킹 값을, EDI에 출력 버퍼 주소를 전달한다. 값의 최상위 니블부터 ASCII 문자로 변환한다.
+
+```asm
+; 입력:
+;   EAX = 8자리 packed BCD 값
+;   EDI = 최소 9바이트 출력 버퍼 주소
+; 출력:
+;   버퍼에 널 종료 ASCII 숫자 문자열
+
+PackedToAsc PROC USES edi
+    mov ecx, 8
+
+convertLoop:
+    rol eax, 4              ; 최상위 니블을 하위 니블 위치로 회전
+    mov dl, al
+    and dl, 0Fh
+    add dl, '0'
+    mov BYTE PTR [edi], dl
+    inc edi
+    loop convertLoop
+
+    mov BYTE PTR [edi], 0
+    ret
+PackedToAsc ENDP
+```
+
+테스트 값 예시:
+
+| EAX에 전달할 값 | ASCII 결과 |
+|---:|---|
+| `12345678h` | `"12345678"` |
+| `00000000h` | `"00000000"` |
+| `99999999h` | `"99999999"` |
+| `00001234h` | `"00001234"` |
+| `87654321h` | `"87654321"` |
+
+테스트용 버퍼는 다음처럼 준비할 수 있다.
+
+```asm
+.data
+outBuffer BYTE 9 DUP(0)
+```
+
+```asm
+mov eax, 12345678h
+mov edi, OFFSET outBuffer
+call PackedToAsc
+mov edx, OFFSET outBuffer
+call WriteString
+```
+
+> 이 예제는 각 니블이 0~9인 유효한 BCD 입력을 가정하며, 부호 니블은 처리하지 않는다.
+
+---
+
+## 4. 회전 연산을 이용한 암호화
+
+### 문제 번역
+
+평문 바이트를 서로 다른 횟수만큼 왼쪽 또는 오른쪽으로 회전하여 간단히 암호화하는 프로시저를 작성하라. 키 배열의 음수는 왼쪽 회전, 양수는 오른쪽 회전을 뜻하고, 절댓값은 회전 횟수다.
+
+```asm
+key BYTE -2, 4, 1, 0, -3, 5, 2, -4, -4, 6
+```
+
+키를 메시지의 첫 10바이트에 맞춰 적용하고, 이어서 다음 10바이트에도 같은 키를 반복 적용한다. 서로 다른 데이터로 프로시저를 두 번 호출하는 테스트 프로그램도 작성하라.
+
+### 풀이
+
+인터페이스는 ESI=평문 버퍼, EDI=키 배열, ECX=평문 바이트 수로 정한다. 아래 코드는 평문을 제자리에서 암호화하고, 10바이트마다 키를 다시 처음부터 사용한다.
+
+```asm
+; 입력:
+;   ESI = 평문 버퍼 주소
+;   EDI = 10개 signed BYTE 키 배열 주소
+;   ECX = 평문 길이(널 종료 문자는 제외)
+
+EncryptRotate PROC USES ebx esi edi ebp
+    mov ebp, ecx            ; 남은 바이트 수
+    xor ebx, ebx            ; 키 인덱스
+
+    test ebp, ebp
+    jz encryptDone
+
+encryptLoop:
+    mov dl, BYTE PTR [esi]
+    movsx eax, BYTE PTR [edi+ebx]
+
+    test eax, eax
+    jz storeByte
+    jg rotateRight
+
+    neg eax                 ; 음수 키의 절댓값
+    mov cl, al
+    rol dl, cl              ; 음수: 왼쪽 회전
+    jmp storeByte
+
+rotateRight:
+    mov cl, al
+    ror dl, cl              ; 양수: 오른쪽 회전
+
+storeByte:
+    mov BYTE PTR [esi], dl
+    inc esi
+    inc ebx
+    cmp ebx, 10
+    jb keyReady
+    xor ebx, ebx            ; 키 10개를 사용하면 처음부터 반복
+
+keyReady:
+    dec ebp
+    jnz encryptLoop
+
+encryptDone:
+    ret
+EncryptRotate ENDP
+```
+
+두 개의 다른 입력을 시험하는 예시:
+
+```asm
+.data
+key      BYTE -2, 4, 1, 0, -3, 5, 2, -4, -4, 6
+plain1   BYTE "HELLOWORLD", 0
+plain2   BYTE "ASSEMBLYLANGUAGE", 0
+
+.code
+    mov esi, OFFSET plain1
+    mov edi, OFFSET key
+    mov ecx, LENGTHOF plain1 - 1
+    call EncryptRotate
+    mov edx, OFFSET plain1
+    call WriteString
+    call CrLf
+
+    mov esi, OFFSET plain2
+    mov edi, OFFSET key
+    mov ecx, LENGTHOF plain2 - 1
+    call EncryptRotate
+    mov edx, OFFSET plain2
+    call WriteString
+    call CrLf
+```
+
+---
+
+## 5. 소수 — 에라토스테네스의 체
+
+### 문제 번역
+
+에라토스테네스의 체를 사용하여 2부터 1000까지의 모든 소수를 생성하고 화면에 출력하는 프로그램을 작성하라.
+
+### 풀이
+
+배열의 각 인덱스를 해당 정수로 사용한다. 처음에는 모두 소수 후보로 표시하고, 각 소수의 배수를 합성수로 지운다.
+
+```asm
+INCLUDE Irvine32.inc
+
+.data
+isPrime BYTE 1001 DUP(1)
+
+.code
+main PROC
+    mov BYTE PTR isPrime[0], 0
+    mov BYTE PTR isPrime[1], 0
+
+    mov ebx, 2
+
+sieveOuter:
+    mov eax, ebx
+    imul eax, ebx
+    cmp eax, 1000
+    ja  sieveDone
+
+    cmp BYTE PTR isPrime[ebx], 0
+    je  nextCandidate
+
+    mov esi, eax            ; 첫 배수 p*p
+
+markMultiples:
+    cmp esi, 1000
+    ja  nextCandidate
+    mov BYTE PTR isPrime[esi], 0
+    add esi, ebx
+    jmp markMultiples
+
+nextCandidate:
+    inc ebx
+    jmp sieveOuter
+
+sieveDone:
+    mov esi, 2
+
+displayLoop:
+    cmp esi, 1000
+    ja  displayDone
+
+    cmp BYTE PTR isPrime[esi], 0
+    je  nextNumber
+
+    mov eax, esi
+    push esi
+    call WriteDec
+    pop esi
+    mov al, ' '
+    call WriteChar
+
+nextNumber:
+    inc esi
+    jmp displayLoop
+
+displayDone:
+    call CrLf
+    exit
+main ENDP
+END main
+```
+
+---
+
+## 6. 최대공약수(GCD)
+
+### 문제 번역
+
+두 정수의 최대공약수는 두 수를 모두 나누어떨어지게 하는 가장 큰 정수다. 절댓값을 구한 후 나머지를 반복해서 계산하는 유클리드 알고리즘으로 GCD를 구현하라. 서로 다른 값을 여러 번 전달하고 결과를 출력하는 테스트 프로그램도 작성하라.
+
+```text
+x = abs(x)
+y = abs(y)
+반복:
+    n = x % y
+    x = y
+    y = n
+y가 0보다 큰 동안 반복
+결과 x 반환
+```
+
+### 풀이
+
+입력은 EAX와 EBX, 반환값은 EAX로 정한다. 절댓값을 만든 뒤 unsigned `DIV`로 나머지를 계산한다.
+
+```asm
+GCD PROC USES ebx edx
+    test eax, eax
+    jns xReady
+    neg eax
+xReady:
+
+    test ebx, ebx
+    jns yReady
+    neg ebx
+yReady:
+
+gcdLoop:
+    test ebx, ebx
+    jz gcdDone
+
+    xor edx, edx
+    div ebx                 ; EDX = EAX MOD EBX
+    mov eax, ebx
+    mov ebx, edx
+    jmp gcdLoop
+
+gcdDone:
+    ret
+GCD ENDP
+```
+
+테스트 예시:
+
+```asm
+mov eax, 48
+mov ebx, 18
+call GCD                  ; EAX = 6
+call WriteDec
+call CrLf
+
+mov eax, -81
+mov ebx, 153
+call GCD                  ; EAX = 9
+call WriteDec
+call CrLf
+
+mov eax, 0
+mov ebx, 42
+call GCD                  ; EAX = 42
+call WriteDec
+call CrLf
+```
+
+> `-2147483648`의 32비트 절댓값은 signed 32비트 범위 밖이지만, 비트 패턴 `80000000h`를 unsigned 크기로 사용하면 이 unsigned 나머지 알고리즘은 처리할 수 있다. `GCD(0,0)`은 이 구현의 입력 전제에서 제외한다.
+
+---
+
+## 7. 비트 연산 곱셈 — `BitwiseMultiply`
+
+### 문제 번역
+
+EAX의 값에 EBX의 부호 없는 32비트 정수를 곱하는 `BitwiseMultiply` 프로시저를 작성하라. 곱셈 알고리즘에는 시프트와 덧셈만 사용하고, 결과를 EAX로 반환하라. 결과가 32비트를 넘지 않는다고 가정한다.
+
+### 풀이
+
+각 반복에서 곱수의 최하위 비트를 CF로 꺼낸다. 비트가 1이면 현재 피승수를 누적하고, 다음 비트 처리를 위해 피승수를 왼쪽으로 이동한다.
+
+```asm
+; 입력: EAX = 곱수, EBX = 피승수
+; 출력: EAX = 곱
+
+BitwiseMultiply PROC USES esi
+    mov esi, ebx
+    mov ecx, 32
+    xor edx, edx            ; 누적 결과
+
+multiplyLoop:
+    shr eax, 1              ; 곱수의 다음 비트가 CF로 이동
+    jnc noAdd
+    add edx, esi
+
+noAdd:
+    shl esi, 1
+    loop multiplyLoop
+
+    mov eax, edx
+    ret
+BitwiseMultiply ENDP
+```
+
+테스트 예시:
+
+```asm
+mov eax, 67
+mov ebx, 12345
+call BitwiseMultiply       ; EAX = 827115
+call WriteDec
+call CrLf
+```
+
+---
+
+## 8. 패킹 정수 더하기 — `AddPacked`
+
+### 문제 번역
+
+4바이트 packed decimal 두 개를 더하는 `AddPacked`를 임의 크기의 packed decimal 두 개를 더하도록 확장하라. 두 피연산자의 길이는 같아야 한다. 4바이트, 8바이트, 16바이트 입력 쌍으로 시험하라.
+
+프로시저 입력 레지스터는 다음과 같이 사용한다.
+
+| 레지스터 | 의미 |
+|---|---|
+| ESI | 첫 번째 packed decimal 주소 |
+| EDI | 두 번째 packed decimal 주소 |
+| EDX | 결과 버퍼 주소 |
+| ECX | 더할 바이트 수 |
+
+### 풀이
+
+packed decimal은 한 바이트에 십진 숫자 두 자리를 저장한다. `ADC` 뒤에 `DAA`를 실행해 각 바이트 결과를 packed BCD로 조정한다. 최하위 바이트부터 처리해야 하며, 포인터 이동 명령은 CF를 보존해야 한다.
+
+```asm
+AddPacked PROC
+    clc
+
+addPackedLoop:
+    mov al, BYTE PTR [esi]
+    adc al, BYTE PTR [edi]
+    daa
+    mov BYTE PTR [edx], al
+
+    inc esi                ; INC는 CF를 변경하지 않음
+    inc edi
+    inc edx
+    loop addPackedLoop     ; LOOP도 플래그를 변경하지 않음
+    ret
+AddPacked ENDP
+```
+
+테스트 데이터 예시:
+
+```asm
+.data
+; 4바이트: 12,345,678 + 22 = 12,345,700
+a4   BYTE 78h, 56h, 34h, 12h
+b4   BYTE 22h, 00h, 00h, 00h
+sum4 BYTE 4 DUP(?)
+
+; 8바이트: 9,999 + 1 = 10,000
+a8   BYTE 99h, 99h, 6 DUP(0)
+b8   BYTE 01h, 7 DUP(0)
+sum8 BYTE 8 DUP(?)
+
+; 16바이트: 9,999 + 1 = 10,000
+a16   BYTE 99h, 99h, 14 DUP(0)
+b16   BYTE 01h, 15 DUP(0)
+sum16 BYTE 16 DUP(?)
+```
+
+호출 예시:
+
+```asm
+mov esi, OFFSET a4
+mov edi, OFFSET b4
+mov edx, OFFSET sum4
+mov ecx, 4
+call AddPacked
+
+mov esi, OFFSET a8
+mov edi, OFFSET b8
+mov edx, OFFSET sum8
+mov ecx, 8
+call AddPacked
+
+mov esi, OFFSET a16
+mov edi, OFFSET b16
+mov edx, OFFSET sum16
+mov ecx, 16
+call AddPacked
+```
+
+예상 결과:
+
+| 결과 버퍼 | packed decimal 결과 |
+|---|---|
+| `sum4` | `12,345,700` |
+| `sum8` | `10,000` |
+| `sum16` | `10,000` |
+
+각 결과는 입력과 동일한 바이트 수로 저장된다. 최상위 바이트에서 넘치는 최종 carry는 별도 저장하지 않는 예제다.
+
+---
+
+## 핵심 정리
+
+| 문제 | 핵심 아이디어 |
+|---|---|
+| WriteScaled | 남은 문자 수가 소수점 오프셋과 같을 때 `.` 출력 |
+| Extended_Sub | 최하위 DWORD부터 `SBB`; 포인터는 `LEA`로 이동해 CF 보존 |
+| PackedToAsc | 각 packed BCD 니블을 ASCII 숫자로 변환 |
+| 회전 암호화 | 음수 키는 `ROL`, 양수 키는 `ROR`, 키 인덱스를 10마다 초기화 |
+| 소수 생성 | 소수 후보 배열에서 각 소수의 배수를 제거 |
+| GCD | 절댓값 후 유클리드 나머지 알고리즘 |
+| 비트 곱셈 | 곱수 비트를 검사하며 시프트와 누적 덧셈 |
+| packed decimal 덧셈 | 바이트별 `ADC` 뒤 `DAA`, CF를 다음 바이트로 전달 |
