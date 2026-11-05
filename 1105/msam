@@ -1,0 +1,28 @@
+
+.386
+.model flat, stdcall
+.stack 4096
+
+INCLUDE Irvine32.inc
+
+.data
+    student_id BYTE "2023964009", 0
+    student_name BYTE "KIM MIN SEONG", 0
+
+.code
+main PROC
+
+    ; 학번 출력
+    mov edx, OFFSET student_id
+    call WriteString
+    call Crlf
+
+    ; 이름 출력
+    mov edx, OFFSET student_name
+    call WriteString
+    call Crlf
+
+    exit
+
+main ENDP
+END main
