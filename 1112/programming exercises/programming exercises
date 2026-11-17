@@ -1,0 +1,842 @@
+## 1. 개선된 `Str_copy` 절차
+
+**문제 번역**
+
+이 장의 `Str_copy`는 복사할 문자 수를 제한하지 않는다. 최대 복사 문자 수를 추가 입력 매개변수로 받는 `Str_copyN`을 작성하시오.
+
+**풀이**
+
+여기서는 `maxChars`를 널 문자 제외 최대 복사 문자 수로 정의한다. 원본이 더 짧으면 원본의 널 문자까지 복사하고, 제한 수에 도달하면 대상 문자열 끝에 널 문자를 직접 쓴다. 따라서 대상 버퍼는 적어도 `maxChars + 1`바이트여야 한다.
+
+```asm
+Str_copyN PROTO, pSource:PTR BYTE, pTarget:PTR BYTE, maxChars:DWORD
+
+Str_copyN PROC USES eax ecx esi edi,
+    pSource:PTR BYTE,
+    pTarget:PTR BYTE,
+    maxChars:DWORD
+
+    mov esi, pSource
+    mov edi, pTarget
+    mov ecx, maxChars
+
+copyLoop:
+    cmp ecx, 0
+    je  terminate
+
+    mov al, [esi]
+    cmp al, 0
+    je  terminate
+
+    mov [edi], al
+    inc esi
+    inc edi
+    dec ecx
+    jmp copyLoop
+
+terminate:
+    mov BYTE PTR [edi], 0
+    ret
+Str_copyN ENDP
+```
+
+간단한 시험 예:
+
+```asm
+.data
+source BYTE "Assembly language",0
+target BYTE 6 DUP(?)
+
+.code
+INVOKE Str_copyN, ADDR source, ADDR target, 5
+; target = "Assem",0
+```
+
+---
+
+## 2. `Str_concat` 절차
+
+**문제 번역**
+
+원본 문자열을 대상 문자열의 끝에 이어 붙이는 `Str_concat`을 작성하시오. 대상에는 새 문자를 넣을 충분한 공간이 있어야 한다. 원본과 대상 문자열의 포인터를 전달한다.
+
+**풀이**
+
+먼저 대상의 널 문자를 찾아 그 위치부터 원본을 널 문자까지 복사한다.
+
+```asm
+Str_concat PROTO, pTarget:PTR BYTE, pSource:PTR BYTE
+
+Str_concat PROC USES eax esi edi,
+    pTarget:PTR BYTE,
+    pSource:PTR BYTE
+
+    mov edi, pTarget
+findEnd:
+    cmp BYTE PTR [edi], 0
+    je  copySource
+    inc edi
+    jmp findEnd
+
+copySource:
+    mov esi, pSource
+copyLoop:
+    mov al, [esi]
+    mov [edi], al
+    inc esi
+    inc edi
+    cmp al, 0
+    jne copyLoop
+    ret
+Str_concat ENDP
+```
+
+시험 예:
+
+```asm
+.data
+targetStr BYTE "ABCDE", 10 DUP(0)
+sourceStr BYTE "FGH",0
+
+.code
+INVOKE Str_concat, ADDR targetStr, ADDR sourceStr
+; targetStr = "ABCDEFGH",0
+```
+
+---
+
+## 3. `Str_remove` 절차
+
+**문제 번역**
+
+문자열에서 $n$개의 문자를 제거하는 `Str_remove`를 작성하시오. 제거할 위치의 포인터와 제거 문자 수를 전달한다. 예를 들어 `"abcxxxxdefghijklmnop"`에서 네 문자 `xxxx`를 제거한다.
+
+**풀이**
+
+제거 위치를 목적지로 두고, 그 뒤의 문자열을 제거할 문자 수만큼 건너뛴 위치에서 앞으로 복사한다. 널 문자를 포함해 복사하므로 문자열이 올바르게 끝난다. 제거 수가 남은 문자열 길이보다 크더라도 널 문자를 넘겨 읽지 않도록 처리한다.
+
+```asm
+Str_remove PROTO, pPosition:PTR BYTE, charCount:DWORD
+
+Str_remove PROC USES eax ecx esi edi,
+    pPosition:PTR BYTE,
+    charCount:DWORD
+
+    mov edi, pPosition          ; 복사할 목적지
+    mov esi, pPosition          ; 제거 후 이어 붙일 원본 위치
+    mov ecx, charCount
+
+skipChars:
+    cmp ecx, 0
+    je  shiftTail
+    cmp BYTE PTR [esi], 0
+    je  shiftTail
+    inc esi
+    dec ecx
+    jmp skipChars
+
+shiftTail:
+    mov al, [esi]
+    mov [edi], al
+    inc esi
+    inc edi
+    cmp al, 0
+    jne shiftTail
+    ret
+Str_remove ENDP
+```
+
+시험 예:
+
+```asm
+.data
+target BYTE "abcxxxxdefghijklmnop",0
+
+.code
+INVOKE Str_remove, ADDR [target+3], 4
+; target = "abcdefghijklmnop",0
+```
+
+---
+
+## 4. `Str_find` 절차
+
+**문제 번역**
+
+대상 문자열 안에서 원본 문자열이 처음 나타나는 위치를 찾는 `Str_find`를 작성하시오. 매개변수는 원본 문자열 포인터와 대상 문자열 포인터다. 찾으면 ZF를 설정하고 EAX에 대상 문자열 안의 일치 위치를 반환한다. 찾지 못하면 ZF를 지우며 EAX의 값은 정의되지 않는다.
+
+**풀이**
+
+각 대상 위치를 시작점 후보로 삼아 원본과 문자를 하나씩 비교한다. 아래 구현은 일치 시 `ZF=1`, 실패 시 `ZF=0`을 설정한 뒤 반환한다. 절차 끝의 `POP`과 `RET`은 플래그를 바꾸지 않는다.
+
+```asm
+Str_find PROTO, pSource:PTR BYTE, pTarget:PTR BYTE
+
+Str_find PROC USES ebx edx esi edi,
+    pSource:PTR BYTE,
+    pTarget:PTR BYTE
+
+    mov esi, pTarget            ; 현재 대상 시작 후보
+
+tryPosition:
+    cmp BYTE PTR [esi], 0
+    je  notFound                ; 대상 끝까지 검사함
+
+    mov edi, pSource            ; 원본의 시작
+    mov ebx, esi                ; 후보 위치의 비교 포인터
+
+compareLoop:
+    mov dl, [edi]
+    cmp dl, 0
+    je  found                   ; 원본 전체가 일치
+
+    mov al, [ebx]
+    cmp al, 0
+    je  nextPosition            ; 대상이 먼저 끝남
+    cmp al, dl
+    jne nextPosition
+
+    inc edi
+    inc ebx
+    jmp compareLoop
+
+nextPosition:
+    inc esi
+    jmp tryPosition
+
+found:
+    mov eax, esi                ; 일치 위치 반환
+    cmp eax, eax                ; ZF = 1
+    ret
+
+notFound:
+    mov eax, 1                  ; 실패 시 반환값은 사용하지 않음
+    cmp eax, 0                  ; ZF = 0
+    ret
+Str_find ENDP
+```
+
+시험 예:
+
+```asm
+.data
+target BYTE "123ABC342432",0
+source BYTE "ABC",0
+pos    DWORD ?
+
+.code
+INVOKE Str_find, ADDR source, ADDR target
+jnz notFound
+mov pos, eax
+; pos는 target 안의 'A' 주소
+```
+
+문자열 비교는 대소문자를 구분한다. 빈 원본 문자열은 대상의 시작 위치에서 일치하는 것으로 처리한다.
+
+---
+
+## 5. `Str_nextWord` 절차
+
+**문제 번역**
+
+문자열에서 지정한 구분 문자의 첫 위치를 찾아 그 문자를 널 문자로 바꾸는 `Str_nextWord`를 작성하시오. 매개변수는 문자열 포인터와 구분 문자다. 구분 문자를 찾으면 ZF를 설정하고 EAX에 구분 문자 다음 문자의 주소를 반환한다. 찾지 못하면 ZF를 지우고 EAX는 정의되지 않는다.
+
+**풀이**
+
+```asm
+Str_nextWord PROTO, pString:PTR BYTE, delimiter:BYTE
+
+Str_nextWord PROC USES esi,
+    pString:PTR BYTE,
+    delimiter:BYTE
+
+    mov esi, pString
+
+scanLoop:
+    mov al, [esi]
+    cmp al, 0
+    je  notFound
+    cmp al, delimiter
+    je  found
+    inc esi
+    jmp scanLoop
+
+found:
+    mov BYTE PTR [esi], 0       ; 구분자를 널 문자로 바꿈
+    lea eax, [esi+1]            ; 다음 문자 주소
+    cmp eax, eax                ; ZF = 1
+    ret
+
+notFound:
+    mov eax, 1
+    cmp eax, 0                  ; ZF = 0
+    ret
+Str_nextWord ENDP
+```
+
+시험 예:
+
+```asm
+.data
+target BYTE "Johnson,Calvin",0
+
+.code
+INVOKE Str_nextWord, ADDR target, ','
+jnz notFound
+; target은 "Johnson",0으로 보이고 EAX는 "Calvin"의 첫 문자 주소
+```
+
+---
+
+## 6. 문자 빈도표 만들기
+
+**문제 번역**
+
+문자열 포인터와 0으로 초기화된 DWORD 256개짜리 배열 포인터를 받는 `Get_frequencies` 절차를 작성하시오. 빈도 배열의 각 항목은 해당 ASCII 코드의 문자 출현 횟수를 저장한다.
+
+**풀이**
+
+각 문자의 ASCII 값은 0~255이므로 해당 위치의 DWORD를 1 증가시킨다. 호출자는 빈도 배열을 먼저 0으로 초기화해야 한다.
+
+```asm
+Get_frequencies PROTO, pString:PTR BYTE, pFreq:PTR DWORD
+
+Get_frequencies PROC USES ebx esi edi,
+    pString:PTR BYTE,
+    pFreq:PTR DWORD
+
+    mov esi, pString
+    mov edi, pFreq
+
+scanLoop:
+    mov al, [esi]
+    cmp al, 0
+    je  done
+
+    movzx ebx, al
+    inc DWORD PTR [edi + ebx*4]
+    inc esi
+    jmp scanLoop
+
+done:
+    ret
+Get_frequencies ENDP
+```
+
+시험 예:
+
+```asm
+.data
+target   BYTE "AAEBDCFBBC",0
+freqTable DWORD 256 DUP(0)
+
+.code
+INVOKE Get_frequencies, ADDR target, ADDR freqTable
+; freqTable[41h] = 2, freqTable[42h] = 3, ...
+```
+
+---
+
+## 7. 에라토스테네스의 체
+
+**문제 번역**
+
+2부터 65,000까지의 모든 소수를 표시하는 프로그램을 작성하시오. 바이트 배열에서 합성수 위치에 1을 표시하고, 나머지 위치의 수를 소수로 출력한다. 배열은 초기화되지 않은 데이터 세그먼트에 선언하고 `STOSB`로 0을 채운다.
+
+**풀이**
+
+직접 수를 배열 인덱스로 쓰면 0~65,000을 표현하기 위해 배열은 **65,001바이트**가 필요하다. 정확히 65,000바이트만 할당하려면 수 $n$을 인덱스 $n-2$로 저장하면 된다. 다음은 직접 인덱싱하는 개념 코드다.
+
+```asm
+MAX_NUM = 65000
+
+.data?
+composite BYTE (MAX_NUM + 1) DUP(?)
+
+.code
+; 0으로 초기화: composite[n] = 0
+cld
+mov edi, OFFSET composite
+xor eax, eax
+mov ecx, MAX_NUM + 1
+rep stosb
+
+; p = 2..floor(sqrt(65000)) = 254
+mov esi, 2
+outerLoop:
+    mov eax, esi
+    imul eax, esi
+    cmp eax, MAX_NUM
+    ja  printPrimes
+
+    cmp composite[esi], 0
+    jne nextP
+
+    ; 배수는 p*p부터 p씩 증가
+    mov ebx, eax
+markMultiples:
+    cmp ebx, MAX_NUM
+    ja  nextP
+    mov composite[ebx], 1
+    add ebx, esi
+    jmp markMultiples
+
+nextP:
+    inc esi
+    jmp outerLoop
+
+printPrimes:
+    mov esi, 2
+printLoop:
+    cmp esi, MAX_NUM
+    ja  sieveDone
+    cmp composite[esi], 0
+    jne notPrime
+    mov eax, esi
+    call WriteDec
+    mov al, ' '
+    call WriteChar
+notPrime:
+    inc esi
+    jmp printLoop
+
+sieveDone:
+    call Crlf
+```
+
+`composite[n]=0`이면 소수, `1`이면 합성수로 표시한다. `Randomize`는 필요하지 않다. 실제 프로그램에서는 배열 인덱스 범위와 65,000 포함 여부를 일관되게 유지한다.
+
+---
+
+## 8. 교환 플래그를 사용하는 버블 정렬
+
+**문제 번역**
+
+9.5.1절의 `BubbleSort`에 내부 루프에서 값이 교환될 때 1로 설정되는 변수를 추가하시오. 한 번의 전체 순회에서 교환이 없으면 정렬을 일찍 종료하는 데 이 변수를 사용하시오.
+
+**풀이**
+
+아래는 부호 있는 DWORD 배열을 오름차순으로 정렬하는 예다. `EBX`가 교환 플래그 역할을 한다.
+
+```asm
+BubbleSort PROC USES eax ebx ecx esi,
+    pArray:PTR DWORD,
+    count:DWORD
+
+    mov ecx, count
+    cmp ecx, 1
+    jbe sortDone
+    dec ecx                     ; 내부 비교 횟수의 첫 상한
+
+outerLoop:
+    push ecx                    ; 바깥 패스 횟수 보관
+    mov esi, pArray
+    xor ebx, ebx                ; 이번 패스에서 교환 없음
+
+innerLoop:
+    mov eax, [esi]
+    cmp eax, [esi+4]
+    jle noSwap                  ; 이미 오름차순
+
+    xchg eax, [esi+4]
+    mov [esi], eax
+    mov ebx, 1                  ; 교환 발생
+
+noSwap:
+    add esi, 4
+    loop innerLoop
+
+    pop ecx
+    cmp ebx, 0
+    je  sortDone                ; 교환이 없으면 이미 정렬 완료
+    loop outerLoop
+
+sortDone:
+    ret
+BubbleSort ENDP
+```
+
+시험 프로그램은 서로 섞인 정수 배열을 전달한 뒤 정렬 결과를 출력하면 된다. `count`가 0 또는 1일 때도 바로 반환한다.
+
+---
+
+## 9. 레지스터를 사용하는 이진 검색
+
+**문제 번역**
+
+이 장의 이진 검색 절차를 `mid`, `first`, `last`에 레지스터를 사용하도록 다시 작성하고, 각 레지스터의 용도를 주석으로 설명하시오.
+
+**풀이**
+
+배열은 오름차순으로 정렬된 부호 있는 DWORD 배열이라고 가정한다. 아래 예에서 `ESI=first`, `EDI=last`, `EBX=mid`, `EDX=배열 주소`다. 일치하면 인덱스를 EAX에, 실패하면 -1을 반환한다.
+
+```asm
+BinarySearch PROC USES ebx edx esi edi,
+    pArray:PTR DWORD,
+    count:DWORD,
+    searchVal:DWORD
+
+    mov esi, 0                  ; first
+    mov edi, count
+    cmp edi, 0
+    je  notFound
+    dec edi                     ; last = count - 1
+    mov edx, pArray             ; 배열 시작 주소
+
+searchLoop:
+    cmp esi, edi
+    jg  notFound                ; first > last이면 못 찾음
+
+    mov ebx, esi
+    add ebx, edi
+    shr ebx, 1                  ; mid = (first + last) / 2
+
+    mov eax, searchVal
+    cmp eax, DWORD PTR [edx + ebx*4]
+    je  found
+    jg  searchRight             ; searchVal > array[mid]
+
+    lea edi, [ebx-1]            ; last = mid - 1
+    jmp searchLoop
+
+searchRight:
+    lea esi, [ebx+1]            ; first = mid + 1
+    jmp searchLoop
+
+found:
+    mov eax, ebx                ; 찾은 원소의 인덱스
+    ret
+
+notFound:
+    mov eax, -1
+    ret
+BinarySearch ENDP
+```
+
+시험용 배열은 정렬된 상태여야 한다. `count=0`인 배열도 실패로 처리한다.
+
+---
+
+## 10. 네 글자 대문자 행렬 생성
+
+**문제 번역**
+
+무작위 대문자로 구성된 4×4 행렬을 만드는 절차를 작성하시오. 선택된 각 문자가 모음일 확률은 50%여야 한다. 시험 프로그램은 절차를 다섯 번 호출하고 각 행렬을 콘솔에 표시한다.
+
+**풀이**
+
+각 칸마다 먼저 모음/자음 중 하나를 같은 확률로 고른다. 그 뒤 모음 집합 `AEIOU` 또는 자음 집합에서 균등하게 문자를 고른다. 이렇게 하면 **모음일 확률은 정확히 50%**지만, 전체 26개 글자가 같은 확률을 갖는 것은 아니다.
+
+```asm
+.data
+vowels     BYTE "AEIOU"
+consonants BYTE "BCDFGHJKLMNPQRSTVWXYZ" ; 21개
+matrix     BYTE 16 DUP(?)
+
+.code
+; Irvine32 RandomRange 사용: EAX에 범위 상한을 넣고 호출하면
+; EAX에 0..상한-1이 반환된다고 가정한다.
+GenerateMatrix PROC USES ebx edx esi,
+    pMatrix:PTR BYTE
+
+    mov esi, pMatrix
+    xor ebx, ebx                ; 셀 번호 0..15
+
+cellLoop:
+    mov eax, 2
+    call RandomRange            ; 0 또는 1
+    cmp eax, 0
+    jne chooseConsonant
+
+    mov eax, 5
+    call RandomRange
+    mov edx, eax
+    mov al, vowels[edx]
+    jmp storeLetter
+
+chooseConsonant:
+    mov eax, 21
+    call RandomRange
+    mov edx, eax
+    mov al, consonants[edx]
+
+storeLetter:
+    mov [esi+ebx], al
+    inc ebx
+    cmp ebx, 16
+    jb  cellLoop
+    ret
+GenerateMatrix ENDP
+```
+
+드라이버는 `Randomize`를 한 번 호출한 뒤 아래를 다섯 번 반복하면 된다.
+
+```asm
+INVOKE GenerateMatrix, ADDR matrix
+; matrix의 4행을 각각 4글자씩 출력하고 행마다 Crlf 호출
+```
+
+행렬 출력 절차는 각 행에서 네 문자를 `WriteChar`로 출력한 뒤 `Crlf`를 호출하면 된다.
+
+---
+
+## 11. 모음이 두 개인 행·열·대각선 찾기
+
+**문제 번역**
+
+앞 문제의 행렬 생성 방법을 이용해 모음일 확률이 50%인 4×4 행렬을 하나 만든다. 모든 행, 열, 대각선의 네 문자 묶음을 검사해 모음이 정확히 두 개인 묶음만 출력하시오. 두 대각선도 검사한다.
+
+**풀이**
+
+4×4 행렬을 0~15의 선형 인덱스로 나타내면 검사할 경로는 행 4개, 열 4개, 대각선 2개로 총 10개다.
+
+| 묶음 | 선형 인덱스 |
+|---|---|
+| 행 0~3 | `0,1,2,3` / `4,5,6,7` / `8,9,10,11` / `12,13,14,15` |
+| 열 0~3 | `0,4,8,12` / `1,5,9,13` / `2,6,10,14` / `3,7,11,15` |
+| 대각선 | `0,5,10,15` / `3,6,9,12` |
+
+각 묶음에서 문자가 `A,E,I,O,U` 중 하나인지 확인해 모음 수를 센 뒤, 정확히 2개인 묶음만 출력한다.
+
+```text
+for each of 10 paths:
+    vowelCount = 0
+    for each of 4 cell indices in path:
+        if matrix[index] is one of A,E,I,O,U:
+            vowelCount++
+    if vowelCount == 2:
+        print the four matrix characters
+```
+
+모음 검사에 사용할 조건은 다음과 같이 구현할 수 있다.
+
+```asm
+; AL = 검사할 대문자
+; 모음이면 EAX=1, 아니면 EAX=0을 반환하는 개념적 검사
+cmp al, 'A'  je isVowel
+cmp al, 'E'  je isVowel
+cmp al, 'I'  je isVowel
+cmp al, 'O'  je isVowel
+cmp al, 'U'  je isVowel
+```
+
+문제의 예시 행렬에서는 행·열·대각선을 각각 검사해 `POAZ`, `GKAE`, `IAGD`, `PAGI`, `ZUED`, `PEAD`, `ZAKI`를 출력한다. 출력되는 네 글자의 순서는 중요하지 않다.
+
+---
+
+## 12. 배열 한 행의 합 계산
+
+**문제 번역**
+
+바이트·워드·DWORD 2차원 배열에서 지정된 한 행의 합을 계산하는 `calc_row_sum`을 작성하시오. 스택 매개변수는 배열 주소, 행 크기, 원소 크기, 행 인덱스다. 합은 EAX로 반환한다. `INVOKE`나 확장형 `PROC`를 사용하지 말고 명시적으로 스택 매개변수를 처리한다. 세 원소 형식의 배열로 시험하고 사용자에게 행 인덱스를 입력받아 합을 출력하시오.
+
+**풀이와 매개변수 정의**
+
+아래 구현은 `rowSizeBytes`를 **한 행의 바이트 수**, `elementSize`를 원소 크기(1, 2, 4바이트)로 정의한다. 따라서 행의 원소 수는 `rowSizeBytes / elementSize`다. 합은 32비트 unsigned 누산으로 계산한다.
+
+```asm
+; 호출 순서: 오른쪽에서 왼쪽으로 인자를 push
+; push rowIndex
+; push elementSize
+; push rowSizeBytes
+; push OFFSET array
+; call calc_row_sum
+;
+; 스택 프레임:
+; [ebp+8]  = arrayOffset
+; [ebp+12] = rowSizeBytes
+; [ebp+16] = elementSize (1, 2, 4)
+; [ebp+20] = rowIndex
+
+calc_row_sum PROC
+    push ebp
+    mov  ebp, esp
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    mov ebx, [ebp+8]            ; 배열 시작 주소
+    mov ecx, [ebp+12]           ; 행 크기(바이트)
+    mov esi, [ebp+16]           ; 원소 크기
+    mov eax, [ebp+20]           ; 행 인덱스
+
+    imul eax, ecx               ; 바이트 단위 행 오프셋
+    add ebx, eax                ; 선택한 행의 시작 주소
+
+    mov eax, ecx                ; EAX = 행 바이트 수
+    xor edx, edx
+    div esi                     ; EAX = 행 원소 개수
+    mov ecx, eax                ; 반복 횟수
+
+    xor edi, edi                ; 행 안의 바이트 오프셋
+    xor eax, eax                ; 합계
+
+sumLoop:
+    cmp esi, 1
+    je  sumByte
+    cmp esi, 2
+    je  sumWord
+    ; 여기서는 elementSize=4
+    add eax, DWORD PTR [ebx+edi]
+    jmp nextElement
+
+sumByte:
+    movzx edx, BYTE PTR [ebx+edi]
+    add eax, edx
+    jmp nextElement
+
+sumWord:
+    movzx edx, WORD PTR [ebx+edi]
+    add eax, edx
+
+nextElement:
+    add edi, esi
+    loop sumLoop
+
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop ebp
+    ret 16                       ; 네 개의 DWORD 인자 정리
+calc_row_sum ENDP
+```
+
+예를 들어 3행 × 4열 배열을 선언하면 바이트 행 크기는 BYTE 배열 4, WORD 배열 8, DWORD 배열 16이다. 호출 시 `elementSize`는 각각 1, 2, 4를 전달한다.
+
+```asm
+; BYTE 배열의 두 번째 행 합 예 (행 인덱스 1)
+push 1
+push 1
+push 4
+push OFFSET byteMatrix
+call calc_row_sum               ; EAX = 선택 행의 합
+```
+
+WORD와 DWORD 배열도 같은 방식으로 호출하되, 각각 행 크기와 원소 크기를 `8,2`, `16,4`로 전달한다. 사용자가 입력한 행 인덱스가 유효한 범위인지 호출 전에 확인해야 한다. signed 원소의 부호 있는 합이 필요하다면 BYTE/WORD 경로의 `MOVZX`를 `MOVSX`로 바꾼다.
+
+---
+
+## 13. 선행 문자 제거
+
+**문제 번역**
+
+문자열의 맨 앞에 연속해서 나타나는 지정 문자를 모두 제거하는 `Str_trim` 변형을 작성하시오. 예를 들어 `"###ABC"`에서 `#`를 제거하면 `"ABC"`가 된다.
+
+**풀이**
+
+처음으로 지정 문자와 다른 위치를 찾은 뒤, 그 지점부터 문자열 전체를 시작 주소로 복사한다. 널 문자도 함께 복사한다.
+
+```asm
+Str_trimLeading PROTO, pString:PTR BYTE, charToRemove:BYTE
+
+Str_trimLeading PROC USES eax esi edi,
+    pString:PTR BYTE,
+    charToRemove:BYTE
+
+    mov esi, pString
+
+skipLeading:
+    mov al, [esi]
+    cmp al, charToRemove
+    jne shiftString
+    cmp al, 0
+    je  shiftString
+    inc esi
+    jmp skipLeading
+
+shiftString:
+    mov edi, pString
+copyLoop:
+    mov al, [esi]
+    mov [edi], al
+    inc esi
+    inc edi
+    cmp al, 0
+    jne copyLoop
+    ret
+Str_trimLeading ENDP
+```
+
+시험 예:
+
+```asm
+.data
+text BYTE "###ABC",0
+
+.code
+INVOKE Str_trimLeading, ADDR text, '#'
+; text = "ABC",0
+```
+
+---
+
+## 14. 문자 집합으로 후행 문자 제거
+
+**문제 번역**
+
+문자열 끝에서 지정 문자 집합에 포함된 문자를 모두 제거하는 `Str_trim` 변형을 작성하시오. 예를 들어 문자열 `"ABC#$&"`와 필터 문자 집합 `"%#!;$&*"`를 전달하면 결과는 `"ABC"`다.
+
+**풀이**
+
+문자열의 널 문자부터 뒤로 이동하며 현재 끝 문자가 필터 문자열 안에 있는지 확인한다. 필터에 있으면 그 위치를 널 문자로 바꾸고 계속 뒤로 간다. 필터에 없는 문자를 만나면 끝낸다.
+
+```asm
+Str_trimSet PROTO, pString:PTR BYTE, pFilter:PTR BYTE
+
+Str_trimSet PROC USES eax ebx esi edi,
+    pString:PTR BYTE,
+    pFilter:PTR BYTE
+
+    mov esi, pString
+
+findEnd:
+    cmp BYTE PTR [esi], 0
+    je  checkTrailing
+    inc esi
+    jmp findEnd
+
+checkTrailing:
+    cmp esi, pString
+    je  done
+    dec esi                     ; 마지막 실제 문자 위치
+    mov al, [esi]
+    mov edi, pFilter
+
+searchFilter:
+    mov bl, [edi]
+    cmp bl, 0
+    je  stopTrim
+    cmp bl, al
+    je  removeChar
+    inc edi
+    jmp searchFilter
+
+removeChar:
+    mov BYTE PTR [esi], 0
+    cmp esi, pString
+    je  done                    ; 문자열 전체가 제거됨
+    jmp checkTrailing
+
+stopTrim:
+    ; 끝 문자가 필터 집합에 없으므로 그대로 종료
+done:
+    ret
+Str_trimSet ENDP
+```
+
+시험 예:
+
+```asm
+.data
+text   BYTE "ABC#$&",0
+filter BYTE "%#!;$&*",0
+
+.code
+INVOKE Str_trimSet, ADDR text, ADDR filter
+; text = "ABC",0
+```
+
